@@ -1,1 +1,5 @@
 .vscode
+.amlignore
+.ipynb_checkpoints
+assets
+aml_config
