@@ -5,6 +5,7 @@
 #
 # Author: Hao Wu, hwuu@outlook.com
 
+import argparse
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -191,12 +192,19 @@ def train(mnist):
         print("After %d training step(s), test accuracy using average "
                 "model is %g" % (TRAINING_STEPS, test_acc))
         
+# Parameters from command line.
+args_ = None
+
 # 主程序入口。
-def main(argv=None):
+def main(_):
     # 声明处理MNIST数据集的类，这个类在初始化时会自动下载数据。
-    mnist = input_data.read_data_sets("/tmp/data", one_hot=True)
+    mnist = input_data.read_data_sets(args_.data_dir, one_hot=True)
     train(mnist)
 
 # TensorFlow提供的一个主程序入口，tf.app.run会调用上面定义的main函数。
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Launch TensorFlow for training.')
+    parser.add_argument("--data-dir", default="/tmp/data",
+        help='Data folder. MNIST data files will be downloaded if they do not exist.')
+    args_ = parser.parse_args()
     tf.app.run()
