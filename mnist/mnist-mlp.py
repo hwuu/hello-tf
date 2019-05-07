@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# This is a simple NN for testing TF on MNIST dataset.
+# This is a simple NN (multi-layer perceptron) for testing TF on MNIST dataset.
 # Code copied from the book 'TensorFlow: 实战 Google 深度学习框架', with minor modifications.
 #
 # Author: Hao Wu, hwuu@outlook.com
