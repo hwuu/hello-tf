@@ -33,9 +33,6 @@ def model(images):
 #
 
 def train(dist=True):
-    # load mnist dataset
-    mnist_dataset = read_data_sets(args_.data_dir, one_hot=True)
-
     # the model
     images = tf.placeholder(tf.float32, [None, 784])
     labels = tf.placeholder(tf.int32, [None, 10])
@@ -74,8 +71,10 @@ def train(dist=True):
         checkpoint_dir=checkpoint_dir,
         config=config,
         hooks=hooks) as mon_sess:
+        # load mnist dataset
+        mnist_dataset = read_data_sets(args_.data_dir, one_hot=True)
         while not mon_sess.should_stop():
-            img_batch, label_batch = mnist_dataset.train.next_batch(32)
+            img_batch, label_batch = mnist_dataset.train.next_batch(100)
             # Perform synchronous training.
             _, loss_val, step_val = mon_sess.run(
                 [train_op, loss, global_step],

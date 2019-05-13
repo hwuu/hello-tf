@@ -116,6 +116,9 @@ def train(mnist):
 
         # 迭代地训练神经网络。
         for i in range(TRAINING_STEPS):
+            # 产生这一轮使用的一个batch的训练数据，并运行训练过程。
+            xs, ys = mnist.train.next_batch(BATCH_SIZE)
+            _, loss_val = sess.run([train_step, loss], feed_dict={x: xs, y_: ys})
             # 每1000轮输出一次在验证数据集上的测试结果。
             if i % 1000 == 0:
                 # 计算滑动平均模型在验证数据上的结果。因为MNIST数据集比较小，所以一次
@@ -124,11 +127,8 @@ def train(mnist):
                 # 会导致计算时间过长甚至发生内存溢出的错误。
                 validate_acc = sess.run(accuracy, feed_dict=validate_feed)
                 print("After %d training step(s), validation accuracy "
-                        "using average model is %g " % (i, validate_acc))
+                        "using average model is %g (loss = %g)" % (i, validate_acc, loss_val))
 
-            # 产生这一轮使用的一个batch的训练数据，并运行训练过程。
-            xs, ys = mnist.train.next_batch(BATCH_SIZE)
-            sess.run(train_step, feed_dict={x: xs, y_: ys})
 
         # 在训练结束之后，在测试数据上检测神经网络模型的最终正确率。
         test_acc = sess.run(accuracy, feed_dict=test_feed)
