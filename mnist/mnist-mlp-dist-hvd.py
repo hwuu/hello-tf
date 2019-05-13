@@ -1,9 +1,25 @@
 # -*- coding: utf-8 -*-
 
+#
+# Distributed DNN training with Horovod.
+#
+# Refs:
+#     - https://zhuanlan.zhihu.com/p/64092047
+#     - https://zhuanlan.zhihu.com/p/34172340
+#
+# To do non-distributed computing:
+#     python mnist-mlp-dist-hvd.py --single-node
+#
+# To do distributed computing:
+#     horovodrun -np 4 -H localhost:4 python mnist-mlp-dist-hvd.py
+#
+
+import argparse
 import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.datasets.mnist import read_data_sets
 
-FLAGS = tf.app.flags.FLAGS
+# Parameters from command line.
+args_ = None
 
 #
 
@@ -18,7 +34,7 @@ def model(images):
 
 def train(dist=True):
     # load mnist dataset
-    mnist_dataset = read_data_sets("/tmp/data", one_hot=True)
+    mnist_dataset = read_data_sets(args_.data_dir, one_hot=True)
 
     # the model
     images = tf.placeholder(tf.float32, [None, 784])
@@ -36,7 +52,7 @@ def train(dist=True):
     config = tf.ConfigProto()
     checkpoint_dir = "/tmp/train_logs"
 
-    if dist:
+    if not args_.single_node:
         import horovod.tensorflow as hvd
         # Initialize Horovod
         hvd.init()
@@ -75,4 +91,10 @@ def main(_):
 #
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Distributed TF with Horovod')
+    parser.add_argument("--data-dir", default="/tmp/data",
+        help='Data folder. MNIST data files will be downloaded if they do not exist.')
+    parser.add_argument("--single-node", action="store_true", default=False,
+        help='Whether the program should run in single-node mode.')
+    args_ = parser.parse_args()
     tf.app.run()
