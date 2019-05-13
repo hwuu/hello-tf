@@ -30,13 +30,33 @@ ds = Datastore(workspace=ws, name="hellotfstore")
 # Create an estimator.
 #
 
-est = Estimator(
+# Single node
+est_1 = Estimator(
     compute_target=compute_target,
     use_gpu=False,
     node_count=1,
     pip_packages=['tensorflow==1.13.1'],
     source_directory="../",
-    entry_script="mnist-fcnn.py",
+    entry_script="mnist-mlp.py",
+    script_params={
+        "--data-dir": ds.path("data/mnist").as_mount()
+    }
+)
+
+# Distributed with PS architecture
+#est_2 = ...
+
+
+# Distributed with Horovod
+est_3 = Estimator(
+    compute_target=compute_target,
+    use_gpu=False,
+    node_count=2,
+    process_count_per_node=2,
+    distributed_backend='mpi',
+    pip_packages=['tensorflow==1.13.1', 'horovod'],
+    source_directory="../",
+    entry_script="mnist-mlp-dist-hvd.py",
     script_params={
         "--data-dir": ds.path("data/mnist").as_mount()
     }
