@@ -2,13 +2,11 @@
 
 # Ref: https://zhuanlan.zhihu.com/p/35083779
 #
-# Start ps instances:
-#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":0}}
-#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":1}}
-#
-# Start worker instances:
-#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":0}}
-#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":1}}
+# Start:
+#     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"ps\",\"index\":0}}
+#     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"ps\",\"index\":1}}
+#     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"worker\",\"index\":0}}
+#     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"worker\",\"index\":1}}
 #
 
 import os
@@ -28,19 +26,19 @@ def model(images):
     return net
 
 def main(_):
-    tf_config = args_.tf_config
-    if tf_config is None:
-        tf_config = os.environ.get("TF_CONFIG")
-    print("TF_CONFIG: %s" % tf_config)
-    tf_config_json = json.loads(tf_config)
-    cluster = tf_config_json.get('cluster')
-    job_name = tf_config_json.get('task', {}).get('type')
-    task_index = tf_config_json.get('task', {}).get('index')
+    tf_config_str = args_.tf_config
+    if tf_config_str is None:
+        tf_config_str = os.environ.get("TF_CONFIG")
+    print("TF_CONFIG: %s" % tf_config_str)
+    tf_config_dict = json.loads(tf_config_str)
+    cluster_spec_dict = tf_config_dict.get('cluster')
+    job_name = tf_config_dict.get('task', {}).get('type')
+    task_index = tf_config_dict.get('task', {}).get('index')
     print("Job name: " + job_name)
-    print("Task index: " + task_index)
+    print("Task index: " + str(task_index))
 
     # create the cluster
-    cluster = tf.train.ClusterSpec(cluster)
+    cluster = tf.train.ClusterSpec(cluster_spec_dict)
 
     # create a server for local task
     server = tf.train.Server(cluster, job_name=job_name, task_index=task_index)
@@ -79,8 +77,8 @@ def main(_):
                 # ref: https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
                 optimizer = tf.train.SyncReplicasOptimizer(
                     optimizer,
-                    replicas_to_aggregate=len(cluster["worker"]),
-                    total_num_replicas=len(cluster["worker"]))
+                    replicas_to_aggregate=cluster.num_tasks(job_name),
+                    total_num_replicas=cluster.num_tasks(job_name))
                 # create the hook which handles initialization and queues
                 hooks.append(optimizer.make_session_run_hook(task_index==0))
 
