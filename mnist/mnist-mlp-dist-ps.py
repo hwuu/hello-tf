@@ -3,23 +3,22 @@
 # Ref: https://zhuanlan.zhihu.com/p/35083779
 #
 # Start ps instances:
-#    - python mnist-mlp-dist-ps.py --tf_config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":0}}
-#    - python mnist-mlp-dist-ps.py --tf_config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":1}}
+#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":0}}
+#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"ps\",\"index\":1}}
 #
 # Start worker instances:
-#    - python mnist-mlp-dist-ps.py --tf_config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":0}}
-#    - python mnist-mlp-dist-ps.py --tf_config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":1}}
+#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":0}}
+#    - python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":\"localhost:2222,localhost:2223\",\"worker\":\"localhost:2224,localhost:2225\"},\"task\":{\"type\":\"worker\",\"index\":1}}
 #
 
 import os
 import json
+import argparse
 import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.datasets.mnist import read_data_sets
 
-tf.app.flags.DEFINE_string("tf_config", "", "config in json format")
-tf.app.flags.DEFINE_boolean("is_sync", False, "using synchronous training or not")
-
-FLAGS = tf.app.flags.FLAGS
+# Parameters from command line.
+args_ = None
 
 def model(images):
     """Define a simple mnist classifier"""
@@ -29,16 +28,18 @@ def model(images):
     return net
 
 def main(_):
-    tf_config = FLAGS.tf_config.strip()
-    if tf_config == "":
+    tf_config = args_.tf_config
+    if tf_config is None:
         tf_config = os.environ.get("TF_CONFIG")
-    print(tf_config)
+    print("TF_CONFIG: %s" % tf_config)
     tf_config_json = json.loads(tf_config)
     cluster = tf_config_json.get('cluster')
     job_name = tf_config_json.get('task', {}).get('type')
     task_index = tf_config_json.get('task', {}).get('index')
+    print("Job name: " + job_name)
+    print("Task index: " + task_index)
 
-    # create the cluster configured by `ps_hosts' and 'worker_hosts'
+    # create the cluster
     cluster = tf.train.ClusterSpec(cluster)
 
     # create a server for local task
@@ -54,10 +55,10 @@ def main(_):
         # on the ps hosts (default placement strategy:  round-robin over all ps hosts, and also
         # place multi copies of operations to each worker host
         with tf.device(tf.train.replica_device_setter(
-            worker_device="/job:worker/task:%d" % (task_index),
+            worker_device="/job:%s/task:%d" % (job_name, task_index),
             cluster=cluster)):
             # load mnist dataset
-            mnist = read_data_sets("/tmp/data", one_hot=True)
+            mnist = read_data_sets(args_.data_dir, one_hot=True)
 
             # the model
             images = tf.placeholder(tf.float32, [None, 784])
@@ -72,8 +73,8 @@ def main(_):
             global_step = tf.train.get_or_create_global_step()
             optimizer = tf.train.AdamOptimizer(learning_rate=1e-04)
 
-            if FLAGS.is_sync:
-                # asynchronous training
+            if args_.in_sync_mode:
+                # sychronous training
                 # use tf.train.SyncReplicasOptimizer wrap optimizer
                 # ref: https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
                 optimizer = tf.train.SyncReplicasOptimizer(
@@ -94,7 +95,7 @@ def main(_):
             with tf.train.MonitoredTrainingSession(
                 master=server.target,
                 is_chief=(task_index == 0),
-                checkpoint_dir="/tmp/checkpoints",
+                #checkpoint_dir="/tmp/checkpoints",
                 hooks=hooks) as mon_sess:
                 while not mon_sess.should_stop():
                     # mon_sess.run handles AbortedError in case of preempted PS.
@@ -106,4 +107,12 @@ def main(_):
                         print("Train step %d, loss: %f" % (step, ls))
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Distributed TF with parameter servers')
+    parser.add_argument("--data-dir", type=str, default="/tmp/data",
+        help='Data folder. MNIST data files will be downloaded if they do not exist.')
+    parser.add_argument("--tf-config", type=str, default=None,
+        help='TF config in json format.')
+    parser.add_argument("--in-sync-mode", action="store_true",
+        help='Whether distributed TF should run in synchronized mode.')
+    args_ = parser.parse_args()
     tf.app.run()
