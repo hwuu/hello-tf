@@ -1,12 +1,33 @@
 # -*- coding: utf-8 -*-
 
-# Ref: https://zhuanlan.zhihu.com/p/35083779
+# Ref 1: 分布式 TensorFlow 入门教程 -- https://zhuanlan.zhihu.com/p/35083779
+# Ref 2: 分布式 Tensorflow 部署和开发 -- https://blog.csdn.net/luodongri/article/details/52596780
+# Ref 3: 分布式 Tensorflow 代码固定模式 -- http://www.voidcn.com/article/p-eojgqsmv-ys.html
+# Ref 4: Tensorflow 常见错误 -- http://whatbeg.com/2018/12/05/tensorflowtips.html
+# Ref 5: https://github.com/yahoo/TensorFlowOnSpark/issues/244#issuecomment-372503145
 #
 # Start:
 #     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"ps\",\"index\":0}}
 #     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"ps\",\"index\":1}}
 #     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"worker\",\"index\":0}}
 #     python mnist-mlp-dist-ps.py --tf-config={\"cluster\":{\"ps\":[\"localhost:2222\",\"localhost:2223\"],\"worker\":[\"localhost:2224\",\"localhost:2225\"]},\"task\":{\"type\":\"worker\",\"index\":1}}
+#
+# Note:
+#  - In AML, if we set the total # of steps to be small (2000 or so), in most of the cases worker_1 will indefinitely
+#    print the error message '2019-05-15 08:32:54.391979: I tensorflow/core/distributed_runtime/master.cc:224] CreateSession still waiting for response from worker: /job:worker/replica:0/task:0'.
+#  - The solution is to let each worker run for a longer time (for example, by setting # of steps larger).
+#  - My guess to why this happens (see ref 5). This may be what should happen ideally:
+#                    t0           t1              t2           t3
+#        worker_0    initialize   start master    start task   exit
+#        worker_1    initialize   start master    start task   exit
+#
+#    However, if worker_0 runs sufficiently fast, the sequence looks like this:
+#                    t0           t1              t2           t3     t4
+#        worker_0    initialize   start master    start task   exit
+#        worker_1    initialize   start master                        start task (should fail)
+#
+#    This may be due to some implementation detail of MonitoredTrainingSession. But I'm not sure.
+#  - Conclusion: It seems better to use Supervisor other than MonitoredTrainingSession.
 #
 
 import os
@@ -36,7 +57,10 @@ def main(_):
     task_index = tf_config_dict.get('task', {}).get('index')
     print("Job name: " + job_name)
     print("Task index: " + str(task_index))
-
+    
+    import socket
+    print(socket.gethostbyname(socket.gethostname()))
+    
     # create the cluster
     cluster = tf.train.ClusterSpec(cluster_spec_dict)
 
@@ -53,7 +77,8 @@ def main(_):
         # on the ps hosts (default placement strategy:  round-robin over all ps hosts, and also
         # place multi copies of operations to each worker host
         with tf.device(tf.train.replica_device_setter(
-            worker_device="/job:%s/task:%d" % (job_name, task_index),
+            ps_device="/job:ps/cpu:0",
+            worker_device="/job:worker/task:%d/cpu:0" % (task_index),
             cluster=cluster)):
             # load mnist dataset
             mnist = read_data_sets(args_.data_dir, one_hot=True)
@@ -66,7 +91,7 @@ def main(_):
             loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels))
 
             # The StopAtStepHook handles stopping after running given steps.
-            hooks = [tf.train.StopAtStepHook(last_step=2000)]
+            hooks = [tf.train.StopAtStepHook(last_step=20000)]
 
             global_step = tf.train.get_or_create_global_step()
             optimizer = tf.train.AdamOptimizer(learning_rate=1e-04)
